@@ -1,5 +1,5 @@
-#include <volt/line_reconstruction_dxa_service.h>
-#include <volt/line_reconstruction_dxa_pipeline.h>
+#include <volt/lrdxa_service.h>
+#include <volt/lrdxa_pipeline.h>
 #include <volt/analysis/structure_analysis.h>
 #include <volt/analysis/analysis_context.h>
 #include <spdlog/spdlog.h>

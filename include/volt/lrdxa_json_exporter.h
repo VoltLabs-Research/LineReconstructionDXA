@@ -6,7 +6,7 @@
 #include <volt/analysis/analysis_context.h>
 #include <volt/analysis/structure_analysis.h>
 #include <volt/core/lammps_parser.h>
-#include <volt/dxa/line_reconstruction_dxa/line_reconstruction_dxa_types.h>
+#include <volt/lrdxa_types.h>
 #include <volt/math/lin_alg.h>
 
 namespace Volt {

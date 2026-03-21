@@ -3,8 +3,8 @@
 #include <volt/core/volt.h>
 #include <volt/core/frame_adapter.h>
 #include <volt/core/analysis_result.h>
-#include <volt/core/line_reconstruction_dxa_options.h>
-#include <volt/utilities/line_reconstruction_json_exporter.h>
+#include <volt/lrdxa_options.h>
+#include <volt/lrdxa_json_exporter.h>
 #include <nlohmann/json.hpp>
 #include <string>
 

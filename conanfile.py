@@ -5,7 +5,7 @@ from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
 class LineReconstructionDXAConan(ConanFile):
     name = "line-reconstruction-dxa"
     version = "1.0.0"
-    package_type = "application"
+    package_type = "static-library"
     license = "MIT"
     settings = "os", "arch", "compiler", "build_type"
     requires = (
@@ -32,3 +32,19 @@ class LineReconstructionDXAConan(ConanFile):
     def package(self):
         cmake = CMake(self)
         cmake.install()
+
+    def package_info(self):
+        self.cpp_info.set_property(
+            "cmake_target_name", "line-reconstruction-dxa::line-reconstruction-dxa"
+        )
+        self.cpp_info.includedirs = ["include"]
+        self.cpp_info.libdirs = ["lib"]
+        self.cpp_info.bindirs = ["bin"]
+        self.cpp_info.libs = ["line-reconstruction-dxa_lib"]
+        self.cpp_info.requires = [
+            "opendxa::opendxa",
+            "coretoolkit::coretoolkit",
+            "structure-identification::structure-identification",
+            "nlohmann_json::nlohmann_json",
+            "spdlog::spdlog",
+        ]

@@ -1,10 +1,10 @@
-#include <volt/line_reconstruction_dxa_pipeline.h>
+#include <volt/lrdxa_pipeline.h>
 
-#include <volt/line_reconstruction_dxa_engine.h>
+#include <volt/lrdxa_engine.h>
 #include <volt/analysis/structure_analysis.h>
 #include <volt/analysis/analysis_context.h>
 #include <volt/utilities/json_utils.h>
-#include <volt/utilities/line_reconstruction_json_exporter.h>
+#include <volt/lrdxa_json_exporter.h>
 
 namespace Volt::DXA {
 

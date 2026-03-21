@@ -1,7 +1,7 @@
 #pragma once
 
 #include <volt/core/lammps_parser.h>
-#include <volt/core/line_reconstruction_dxa_options.h>
+#include <volt/lrdxa_options.h>
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <string>

@@ -1,5 +1,5 @@
 #include <volt/cli/common.h>
-#include <volt/line_reconstruction_dxa_service.h>
+#include <volt/lrdxa_service.h>
 #include <volt/structures/crystal_structure_types.h>
 #include <tbb/info.h>
 #include <algorithm>

@@ -1,4 +1,4 @@
-#include <volt/line_reconstruction_dxa_engine.h>
+#include <volt/lrdxa_engine.h>
 
 #include <volt/analysis/crystal_path_finder.h>
 #include <volt/analysis/cluster_connector.h>
@@ -14,6 +14,37 @@
 namespace Volt::DXA {
 
 namespace {
+
+bool isFiniteCell(const DelaunayTessellation& tessellation, DelaunayTessellation::CellHandle cell) {
+    return tessellation.isValidCell(cell);
+}
+
+std::array<DelaunayTessellation::VertexHandle, 4> getCellVertices(
+    const DelaunayTessellation& tessellation,
+    DelaunayTessellation::CellHandle cell) {
+    return {
+        tessellation.cellVertex(cell, 0),
+        tessellation.cellVertex(cell, 1),
+        tessellation.cellVertex(cell, 2),
+        tessellation.cellVertex(cell, 3),
+    };
+}
+
+int getInputPointIndex(const DelaunayTessellation& tessellation, DelaunayTessellation::VertexHandle vertex) {
+    return tessellation.vertexIndex(vertex);
+}
+
+int findInputPointInCell(
+    const DelaunayTessellation& tessellation,
+    DelaunayTessellation::CellHandle cell,
+    int atomIndex) {
+    for(int localVertex = 0; localVertex < 4; ++localVertex) {
+        if(getInputPointIndex(tessellation, tessellation.cellVertex(cell, localVertex)) == atomIndex) {
+            return localVertex;
+        }
+    }
+    return -1;
+}
 
 int computedSubTypeForCrystal(int latticeStructureType) {
     switch(latticeStructureType) {
@@ -232,7 +263,7 @@ void LineReconstructionDXAAlgorithm::classifyTetrahedra(double alpha) {
         }
         for(int facet = 0; facet < 4; ++facet) {
             DelaunayTessellation::CellHandle adjacentCell = _tessellation.mirrorFacet(cell, facet).first;
-            if(!_tessellation.isFiniteCell(adjacentCell)) {
+            if(!isFiniteCell(_tessellation, adjacentCell)) {
                 return false;
             }
             auto adjacentAlphaTestResult = _tessellation.alphaTest(adjacentCell, alpha);
@@ -253,11 +284,11 @@ void LineReconstructionDXAAlgorithm::generateTessellationEdges() {
         if(!isFilledCell(cell)) {
             continue;
         }
-        const auto cellVertices = _tessellation.cellVertices(cell);
+        const auto cellVertices = getCellVertices(_tessellation, cell);
         std::array<AtomIndex, 4> cellAtoms{};
         std::array<Point3, 4> cellPositions{};
         for(int vertex = 0; vertex < 4; ++vertex) {
-            cellAtoms[vertex] = _tessellation.inputPointIndex(cellVertices[vertex]);
+            cellAtoms[vertex] = getInputPointIndex(_tessellation, cellVertices[vertex]);
             cellPositions[vertex] = _tessellation.vertexPosition(cellVertices[vertex]);
         }
         for(int edgeIndex = 0; edgeIndex < 6; ++edgeIndex) {
@@ -420,10 +451,10 @@ void LineReconstructionDXAAlgorithm::buildFacetLookupMap() {
         if(!isFilledCell(cell)) {
             continue;
         }
-        const auto cellVertices = _tessellation.cellVertices(cell);
+        const auto cellVertices = getCellVertices(_tessellation, cell);
         std::array<AtomIndex, 4> cellAtoms{};
         for(int vertex = 0; vertex < 4; ++vertex) {
-            cellAtoms[vertex] = _tessellation.inputPointIndex(cellVertices[vertex]);
+            cellAtoms[vertex] = getInputPointIndex(_tessellation, cellVertices[vertex]);
         }
         for(int facet = 0; facet < 4; ++facet) {
             std::array<AtomIndex, 3> facetVertices = {
@@ -463,8 +494,8 @@ bool LineReconstructionDXAAlgorithm::complementEdgeVectors(bool forward) {
         int iterLimit = 1000;
         do {
             if(--iterLimit <= 0) break;
-            int localVertex1 = _tessellation.findInputPointInCell(cell, atom1);
-            int localVertex2 = _tessellation.findInputPointInCell(cell, atom2);
+            int localVertex1 = findInputPointInCell(_tessellation, cell, atom1);
+            int localVertex2 = findInputPointInCell(_tessellation, cell, atom2);
             if(localVertex1 < 0 || localVertex2 < 0) {
                 break;
             }
@@ -474,13 +505,13 @@ bool LineReconstructionDXAAlgorithm::complementEdgeVectors(bool forward) {
             }
             int facet;
             std::tie(cell, facet) = _tessellation.mirrorFacet(cell, nextFacet);
-            if(!_tessellation.isFiniteCell(cell)) {
+            if(!isFiniteCell(_tessellation, cell)) {
                 break; // Reached infinite cell, cannot continue traversal
             }
             if(_tessellation.isGhostCell(cell)) {
                 std::array<AtomIndex, 3> vertices{};
                 for(int i = 0; i < 3; ++i) {
-                    vertices[i] = _tessellation.inputPointIndex(_tessellation.cellVertex(cell, DelaunayTessellation::cellFacetVertexIndex(facet, i)));
+                    vertices[i] = getInputPointIndex(_tessellation, _tessellation.cellVertex(cell, DelaunayTessellation::cellFacetVertexIndex(facet, i)));
                 }
                 reorderFacetVertices(vertices);
                 auto iter = _primaryFacetLookupMap.find(vertices);
@@ -737,7 +768,7 @@ void LineReconstructionDXAAlgorithm::appendDislocationSegmentSnapshot() {
                 }
             }
 
-            const auto cellVertices = _tessellation.cellVertices(cell);
+            const auto cellVertices = getCellVertices(_tessellation, cell);
             std::array<Point3, 4> tetPoints = {
                 _tessellation.vertexPosition(cellVertices[0]),
                 _tessellation.vertexPosition(cellVertices[1]),
@@ -824,7 +855,7 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
         if(!isFilledCell(cell)) {
             continue;
         }
-        const auto cellVertices = _tessellation.cellVertices(cell);
+        const auto cellVertices = getCellVertices(_tessellation, cell);
         std::array<Point3, 4> tetPoints = {
             _tessellation.vertexPosition(cellVertices[0]),
             _tessellation.vertexPosition(cellVertices[1]),
@@ -846,10 +877,10 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
         }
 
         std::array<AtomIndex, 4> cellAtoms = {
-            _tessellation.inputPointIndex(cellVertices[0]),
-            _tessellation.inputPointIndex(cellVertices[1]),
-            _tessellation.inputPointIndex(cellVertices[2]),
-            _tessellation.inputPointIndex(cellVertices[3])
+            getInputPointIndex(_tessellation, cellVertices[0]),
+            getInputPointIndex(_tessellation, cellVertices[1]),
+            getInputPointIndex(_tessellation, cellVertices[2]),
+            getInputPointIndex(_tessellation, cellVertices[3])
         };
         Cluster* referenceCluster = nullptr;
         for(AtomIndex atom : cellAtoms) {
@@ -1485,13 +1516,13 @@ void LineReconstructionDXAAlgorithm::appendInterfaceMeshSnapshot(double alpha) {
 }
 
 bool LineReconstructionDXAAlgorithm::isInteriorInterfaceCell(DelaunayTessellation::CellHandle cell, double alpha) const {
-    if(!_tessellation.isFiniteCell(cell)) {
+    if(!isFiniteCell(_tessellation, cell)) {
         return false;
     }
 
     bool allCrystalline = true;
     for(int vertex = 0; vertex < 4; ++vertex) {
-        const AtomIndex atomIndex = _tessellation.inputPointIndex(_tessellation.cellVertex(cell, vertex));
+        const AtomIndex atomIndex = getInputPointIndex(_tessellation, _tessellation.cellVertex(cell, vertex));
         Cluster* cluster = _structureAnalysis.atomCluster(atomIndex);
         if(!cluster || cluster->id == 0) {
             allCrystalline = false;
@@ -1508,7 +1539,7 @@ bool LineReconstructionDXAAlgorithm::isInteriorInterfaceCell(DelaunayTessellatio
 
     for(int facet = 0; facet < 4; ++facet) {
         DelaunayTessellation::CellHandle adjacentCell = _tessellation.mirrorFacet(cell, facet).first;
-        if(!_tessellation.isFiniteCell(adjacentCell)) {
+        if(!isFiniteCell(_tessellation, adjacentCell)) {
             return false;
         }
         auto adjacentAlphaTestResult = _tessellation.alphaTest(adjacentCell, alpha);
@@ -1568,7 +1599,7 @@ bool LineReconstructionDXAAlgorithm::isElasticMappingCompatible(const std::array
 }
 
 std::array<LineReconstructionDXAAlgorithm::OrientedEdge, 6> LineReconstructionDXAAlgorithm::getOrientedEdges(DelaunayTessellation::CellHandle cell) const {
-    const auto cellVertices = _tessellation.cellVertices(cell);
+    const auto cellVertices = getCellVertices(_tessellation, cell);
     std::array<OrientedEdge, 6> edges;
     for(int index = 0; index < 6; ++index) {
         edges[index] = getOrientedEdge(cellVertices, index);
@@ -1585,13 +1616,13 @@ LineReconstructionDXAAlgorithm::OrientedEdge LineReconstructionDXAAlgorithm::get
 }
 
 LineReconstructionDXAAlgorithm::OrientedEdge LineReconstructionDXAAlgorithm::getOrientedEdge(const std::array<DelaunayTessellation::VertexHandle, 4>& cellVertices, int localEdgeIndex) const {
-    AtomIndex atom1 = _tessellation.inputPointIndex(cellVertices[kCellEdgeVertices[localEdgeIndex][0]]);
-    AtomIndex atom2 = _tessellation.inputPointIndex(cellVertices[kCellEdgeVertices[localEdgeIndex][1]]);
+    AtomIndex atom1 = getInputPointIndex(_tessellation, cellVertices[kCellEdgeVertices[localEdgeIndex][0]]);
+    AtomIndex atom2 = getInputPointIndex(_tessellation, cellVertices[kCellEdgeVertices[localEdgeIndex][1]]);
     return getOrientedEdge(atom1, atom2);
 }
 
 std::array<LineReconstructionDXAAlgorithm::OrientedEdge, 3> LineReconstructionDXAAlgorithm::getFacetCircuitEdges(DelaunayTessellation::CellHandle cell, int facetIndex) const {
-    const auto cellVertices = _tessellation.cellVertices(cell);
+    const auto cellVertices = getCellVertices(_tessellation, cell);
     switch(facetIndex) {
         case 0: return { getOrientedEdge(cellVertices, 3), getOrientedEdge(cellVertices, 5), -getOrientedEdge(cellVertices, 4) };
         case 1: return { getOrientedEdge(cellVertices, 2), -getOrientedEdge(cellVertices, 5), -getOrientedEdge(cellVertices, 1) };

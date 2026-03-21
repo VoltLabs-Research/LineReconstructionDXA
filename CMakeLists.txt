@@ -49,20 +49,32 @@ find_package(opendxa REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
+get_target_property(OPENDXA_INCLUDE_DIRS opendxa::opendxa INTERFACE_INCLUDE_DIRECTORIES)
+if(NOT OPENDXA_INCLUDE_DIRS OR OPENDXA_INCLUDE_DIRS STREQUAL "OPENDXA_INCLUDE_DIRS-NOTFOUND")
+    set(OPENDXA_INCLUDE_DIRS)
+endif()
+set(LOCAL_OPENDXA_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../OpenDXA/include")
+if(EXISTS "${LOCAL_OPENDXA_INCLUDE_DIR}")
+    list(PREPEND OPENDXA_INCLUDE_DIRS "${LOCAL_OPENDXA_INCLUDE_DIR}")
+endif()
+
 file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
 list(FILTER LIB_SOURCES EXCLUDE REGEX ".*main\.cpp$")
 
 add_library(${PROJECT_NAME}_lib STATIC ${LIB_SOURCES})
 set_target_properties(${PROJECT_NAME}_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_include_directories(${PROJECT_NAME}_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME}_lib BEFORE PUBLIC
+    ${OPENDXA_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}/include
+)
 target_precompile_headers(${PROJECT_NAME}_lib PRIVATE <volt/core/volt.h>)
 target_link_libraries(${PROJECT_NAME}_lib PUBLIC
+    opendxa::opendxa
     coretoolkit::coretoolkit
     structure-identification::structure-identification
     spdlog::spdlog
     nlohmann_json::nlohmann_json
-    PRIVATE opendxa::opendxa
 )
 
 add_executable(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/src/main.cpp)

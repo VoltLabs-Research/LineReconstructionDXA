@@ -2,8 +2,8 @@
 
 #include <volt/core/volt.h>
 #include <volt/core/particle_property.h>
-#include <volt/core/line_reconstruction_dxa_options.h>
-#include <volt/dxa/line_reconstruction_dxa/line_reconstruction_dxa_types.h>
+#include <volt/lrdxa_options.h>
+#include <volt/lrdxa_types.h>
 #include <volt/geometry/delaunay_tessellation.h>
 #include <volt/structures/cluster_vector.h>
 #include <volt/utilities/memory_pool.h>
