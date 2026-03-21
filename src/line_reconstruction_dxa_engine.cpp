@@ -1,5 +1,6 @@
 #include <volt/line_reconstruction_dxa_engine.h>
 
+#include <volt/analysis/crystal_path_finder.h>
 #include <volt/analysis/cluster_connector.h>
 #include <volt/analysis/structure_analysis.h>
 #include <volt/analysis/analysis_context.h>

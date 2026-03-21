@@ -6,7 +6,6 @@
 #include <volt/dxa/line_reconstruction_dxa/line_reconstruction_dxa_types.h>
 #include <volt/geometry/delaunay_tessellation.h>
 #include <volt/structures/cluster_vector.h>
-#include <volt/analysis/crystal_path_finder.h>
 #include <volt/utilities/memory_pool.h>
 #include <functional>
 #include <string_view>
