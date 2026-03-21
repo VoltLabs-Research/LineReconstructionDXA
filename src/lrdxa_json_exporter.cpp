@@ -14,6 +14,13 @@ namespace Volt {
 
 namespace {
 
+Vector3 getGlobalBurgersVector(const ClusterVector& burgersVector) {
+    if(burgersVector.cluster() == nullptr) {
+        return burgersVector.localVec();
+    }
+    return burgersVector.toSpatialVector();
+}
+
 void clipDislocationLine(
     const std::vector<Point3>& line,
     const SimulationCell& simulationCell,
@@ -179,7 +186,8 @@ json LineReconstructionJsonExporter::exportLineSegmentsToJson(
     int globalChunkId = 0;
 
     for(const auto& segment : segments) {
-        const auto& burgers = segment.burgersVector.localVec();
+        const Vector3 burgersLocal = segment.burgersVector.localVec();
+        const Vector3 burgersGlobal = getGlobalBurgersVector(segment.burgersVector);
         if(simulationCell) {
             std::vector<Point3> line = {segment.position1, segment.position2};
             std::vector<Point3> currentChunk;
@@ -200,9 +208,16 @@ json LineReconstructionJsonExporter::exportLineSegmentsToJson(
                         {"length", chunkLength},
                         {"position1", {cp1.x(), cp1.y(), cp1.z()}},
                         {"position2", {cp2.x(), cp2.y(), cp2.z()}},
-                        {"burgers_vector", {burgers.x(), burgers.y(), burgers.z()}},
-                        {"burgers", {{"vector", {burgers.x(), burgers.y(), burgers.z()}}, {"magnitude", burgers.length()}}},
-                        {"magnitude", burgers.length()},
+                        {"burgers_vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                        {"burgers_vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                        {"burgers_vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                        {"burgers", {
+                            {"vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                            {"vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                            {"vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                            {"magnitude", burgersLocal.length()}
+                        }},
+                        {"magnitude", burgersLocal.length()},
                         {"cluster_id", segment.clusterId},
                         {"structure_type", segment.structureType},
                         {"stage", segment.stage}
@@ -230,9 +245,16 @@ json LineReconstructionJsonExporter::exportLineSegmentsToJson(
                     {"length", chunkLength},
                     {"position1", {cp1.x(), cp1.y(), cp1.z()}},
                     {"position2", {cp2.x(), cp2.y(), cp2.z()}},
-                    {"burgers_vector", {burgers.x(), burgers.y(), burgers.z()}},
-                    {"burgers", {{"vector", {burgers.x(), burgers.y(), burgers.z()}}, {"magnitude", burgers.length()}}},
-                    {"magnitude", burgers.length()},
+                    {"burgers_vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                    {"burgers_vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                    {"burgers_vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                    {"burgers", {
+                        {"vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                        {"vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                        {"vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                        {"magnitude", burgersLocal.length()}
+                    }},
+                    {"magnitude", burgersLocal.length()},
                     {"cluster_id", segment.clusterId},
                     {"structure_type", segment.structureType},
                     {"stage", segment.stage}
@@ -247,9 +269,16 @@ json LineReconstructionJsonExporter::exportLineSegmentsToJson(
                 {"length", chunkLength},
                 {"position1", {segment.position1.x(), segment.position1.y(), segment.position1.z()}},
                 {"position2", {segment.position2.x(), segment.position2.y(), segment.position2.z()}},
-                {"burgers_vector", {burgers.x(), burgers.y(), burgers.z()}},
-                {"burgers", {{"vector", {burgers.x(), burgers.y(), burgers.z()}}, {"magnitude", burgers.length()}}},
-                {"magnitude", burgers.length()},
+                {"burgers_vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                {"burgers_vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                {"burgers_vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                {"burgers", {
+                    {"vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                    {"vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                    {"vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                    {"magnitude", burgersLocal.length()}
+                }},
+                {"magnitude", burgersLocal.length()},
                 {"cluster_id", segment.clusterId},
                 {"structure_type", segment.structureType},
                 {"stage", segment.stage}
@@ -286,7 +315,8 @@ json LineReconstructionJsonExporter::exportDislocationLinesToJson(
     double totalLength = 0.0;
 
     for(const auto& line : lines) {
-        const auto& burgers = line.burgersVector.localVec();
+        const Vector3 burgersLocal = line.burgersVector.localVec();
+        const Vector3 burgersGlobal = getGlobalBurgersVector(line.burgersVector);
         auto appendLine = [&](const std::vector<Point3>& pointsVec) {
             if(pointsVec.size() < 2) {
                 return;
@@ -309,9 +339,16 @@ json LineReconstructionJsonExporter::exportDislocationLinesToJson(
                 {"points", points},
                 {"num_points", static_cast<int>(pointsVec.size())},
                 {"length", lineLength},
-                {"burgers_vector", {burgers.x(), burgers.y(), burgers.z()}},
-                {"burgers", {{"vector", {burgers.x(), burgers.y(), burgers.z()}}, {"magnitude", burgers.length()}}},
-                {"magnitude", burgers.length()},
+                {"burgers_vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                {"burgers_vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                {"burgers_vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                {"burgers", {
+                    {"vector", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                    {"vector_local", {burgersLocal.x(), burgersLocal.y(), burgersLocal.z()}},
+                    {"vector_global", {burgersGlobal.x(), burgersGlobal.y(), burgersGlobal.z()}},
+                    {"magnitude", burgersLocal.length()}
+                }},
+                {"magnitude", burgersLocal.length()},
                 {"cluster_id", line.clusterId},
                 {"structure_type", line.structureType},
                 {"is_closed", line.isClosed},
