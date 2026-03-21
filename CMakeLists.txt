@@ -45,6 +45,8 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release MinSizeRel Re
 
 find_package(coretoolkit REQUIRED)
 find_package(structure-identification REQUIRED)
+find_package(common-neighbor-analysis REQUIRED)
+find_package(polyhedral-template-matching REQUIRED)
 find_package(opendxa REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -58,6 +60,21 @@ if(EXISTS "${LOCAL_OPENDXA_INCLUDE_DIR}")
     list(PREPEND OPENDXA_INCLUDE_DIRS "${LOCAL_OPENDXA_INCLUDE_DIR}")
 endif()
 
+function(append_imported_library out_var target_name)
+    if(NOT TARGET "${target_name}")
+        return()
+    endif()
+
+    get_target_property(imported_location "${target_name}" IMPORTED_LOCATION_RELEASE)
+    if(NOT imported_location OR imported_location STREQUAL "imported_location-NOTFOUND")
+        get_target_property(imported_location "${target_name}" IMPORTED_LOCATION)
+    endif()
+
+    if(imported_location AND NOT imported_location STREQUAL "imported_location-NOTFOUND")
+        set(${out_var} ${${out_var}} "${imported_location}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
 list(FILTER LIB_SOURCES EXCLUDE REGEX ".*main\.cpp$")
 
@@ -69,10 +86,12 @@ target_include_directories(${PROJECT_NAME}_lib BEFORE PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
 target_precompile_headers(${PROJECT_NAME}_lib PRIVATE <volt/core/volt.h>)
-target_link_libraries(${PROJECT_NAME}_lib PUBLIC
+target_link_libraries(${PROJECT_NAME}_lib PRIVATE
     opendxa::opendxa
     coretoolkit::coretoolkit
     structure-identification::structure-identification
+    common-neighbor-analysis::common-neighbor-analysis
+    polyhedral-template-matching::polyhedral-template-matching
     spdlog::spdlog
     nlohmann_json::nlohmann_json
 )
@@ -80,7 +99,28 @@ target_link_libraries(${PROJECT_NAME}_lib PUBLIC
 add_executable(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/src/main.cpp)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
-target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_lib)
+
+set(LRDXA_MANUAL_LINK_LIBS)
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::opendxa_opendxa_lib_RELEASE")
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::structure-identification_structure-identification_RELEASE")
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::common-neighbor-analysis_common-neighbor-analysis_lib_RELEASE")
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::polyhedral-template-matching_polyhedral-template-matching_lib_RELEASE")
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::coretoolkit_coretoolkit_RELEASE")
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::coretoolkit_ptm_RELEASE")
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::coretoolkit_mwm_csp_RELEASE")
+append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::coretoolkit_geogram_RELEASE")
+
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    ${PROJECT_NAME}_lib
+    opendxa::opendxa
+    structure-identification::structure-identification
+    common-neighbor-analysis::common-neighbor-analysis
+    polyhedral-template-matching::polyhedral-template-matching
+    coretoolkit::coretoolkit
+    spdlog::spdlog
+    nlohmann_json::nlohmann_json
+    ${LRDXA_MANUAL_LINK_LIBS}
+)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 install(TARGETS ${PROJECT_NAME}_lib DESTINATION lib)
