@@ -61,6 +61,10 @@ int computedSubTypeForCrystal(int latticeStructureType) {
     }
 }
 
+bool crystalUsesDirectTessellation(int latticeStructureType) {
+    return computedSubTypeForCrystal(latticeStructureType) == LATTICE_OTHER;
+}
+
 }  // namespace
 
 LineReconstructionDXAAlgorithm::LineReconstructionDXAAlgorithm(StructureAnalysis& structureAnalysis, AnalysisContext& context)
@@ -145,22 +149,29 @@ void LineReconstructionDXAAlgorithm::run(
     dumpDislocationSnapshot(alpha);
     emitStage("snapshot_after_loop_cleanup");
 
-    while(true) {
-        bool changed = false;
+    const bool skipComplementPasses = crystalUsesDirectTessellation(_context.inputCrystalType)
+        && _structureAnalysis.clusterGraph().clusterTransitions().empty();
 
-        changed |= complementEdgeVectors(true);
-        emitStage("complement_edge_vectors_forward");
+    if(skipComplementPasses) {
+        emitStage("skip_complement_edge_vectors");
+    } else {
+        while(true) {
+            bool changed = false;
 
-        dumpDislocationSnapshot(alpha);
-        emitStage("snapshot_after_forward_complement");
+            changed |= complementEdgeVectors(true);
+            emitStage("complement_edge_vectors_forward");
 
-        changed |= complementEdgeVectors(false);
-        emitStage("complement_edge_vectors_backward");
+            dumpDislocationSnapshot(alpha);
+            emitStage("snapshot_after_forward_complement");
 
-        dumpDislocationSnapshot(alpha);
-        emitStage("snapshot_after_backward_complement");
+            changed |= complementEdgeVectors(false);
+            emitStage("complement_edge_vectors_backward");
 
-        if(!changed) break;
+            dumpDislocationSnapshot(alpha);
+            emitStage("snapshot_after_backward_complement");
+
+            if(!changed) break;
+        }
     }
 
     dumpDislocationSnapshot(alpha);
@@ -205,6 +216,7 @@ void LineReconstructionDXAAlgorithm::dissolveSmallClusters(int minClusterSize) {
 void LineReconstructionDXAAlgorithm::markPerfectCrystallineRegions() {
     const size_t atomCount = _context.atomCount();
     const int computedSubType = computedSubTypeForCrystal(_context.inputCrystalType);
+    const bool directCrystalTessellation = crystalUsesDirectTessellation(_context.inputCrystalType);
     _delaunayAtomMask = std::make_shared<ParticleProperty>(atomCount, DataType::Int, 1, 0, true);
     _delaunayVertexCount = 0;
     for(size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex) {
@@ -216,6 +228,11 @@ void LineReconstructionDXAAlgorithm::markPerfectCrystallineRegions() {
         }
 
         const int structureType = cluster->structure;
+        if(directCrystalTessellation && structureType == _context.inputCrystalType) {
+            _delaunayAtomMask->setInt(atomIndex, 1);
+            _delaunayVertexCount++;
+            continue;
+        }
         if(structureType == LATTICE_OTHER || (computedSubType != LATTICE_OTHER && structureType == computedSubType)) {
             _delaunayAtomMask->setInt(atomIndex, 1);
             _delaunayVertexCount++;

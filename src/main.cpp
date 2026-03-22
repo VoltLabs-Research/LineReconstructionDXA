@@ -119,7 +119,6 @@ int main(int argc, char* argv[]) {
     spdlog::info("Output base: {}", outputBase);
 
     LineReconstructionDXAService analyzer;
-    analyzer.setInputFilename(filename);
     analyzer.setInputCrystalStructure(parseCrystalStructure(getString(opts, "--crystalStructure", "FCC")));
     analyzer.setIdentificationMode(parseIdentificationMode(getString(opts, "--identificationMode", "CNA")));
     analyzer.setRmsd(getDouble(opts, "--rmsd", 0.12f));

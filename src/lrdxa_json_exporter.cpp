@@ -21,6 +21,21 @@ Vector3 getGlobalBurgersVector(const ClusterVector& burgersVector) {
     return burgersVector.toSpatialVector();
 }
 
+json wrapSimulationCellInfoJson(const SimulationCell& cell, json&& cellJson) {
+    const auto& pbcFlags = cell.pbcFlags();
+    return {
+        {"export", {{"SimulationCellExporter", {{"simulation_cell", cellJson}}}}},
+        {"main_listing", {
+            {"simulation_cells", 1},
+            {"volume", cell.volume3D()},
+            {"is_2d", cell.is2D()},
+            {"effective_dimensions", cell.is2D() ? 2 : 3},
+            {"periodic_dimensions", static_cast<int>(pbcFlags[0]) + static_cast<int>(pbcFlags[1]) + static_cast<int>(pbcFlags[2])}
+        }},
+        {"sub_listings", {{"simulation_cell", std::move(cellJson)}}}
+    };
+}
+
 void clipDislocationLine(
     const std::vector<Point3>& line,
     const SimulationCell& simulationCell,
@@ -531,7 +546,7 @@ json LineReconstructionJsonExporter::getExtendedSimulationCellInfo(const Simulat
         {"is_2d", cell.is2D()},
         {"effective_dimensions", cell.is2D() ? 2 : 3}
     };
-    return cellJson;
+    return wrapSimulationCellInfoJson(cell, std::move(cellJson));
 }
 
 void LineReconstructionJsonExporter::exportForStructureIdentification(

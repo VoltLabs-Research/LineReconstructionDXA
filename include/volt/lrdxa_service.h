@@ -17,7 +17,6 @@ public:
     LineReconstructionDXA();
 
     void setInputCrystalStructure(LatticeStructureType structure);
-    void setInputFilename(std::string filename);
     void setIdentificationMode(StructureAnalysis::Mode identificationMode);
     void setRmsd(float rmsd);
     void setStructureIdentificationOnly(bool structureIdentificationOnly);
@@ -36,7 +35,6 @@ private:
 
 private:
     LatticeStructureType _inputCrystalStructure;
-    std::string _inputFilename;
     StructureAnalysis::Mode _identificationMode;
     float _rmsd;
     bool _structureIdentificationOnly;

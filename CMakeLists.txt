@@ -60,6 +60,18 @@ if(EXISTS "${LOCAL_OPENDXA_INCLUDE_DIR}")
     list(PREPEND OPENDXA_INCLUDE_DIRS "${LOCAL_OPENDXA_INCLUDE_DIR}")
 endif()
 
+set(LRDXA_LOCAL_DEP_INCLUDE_DIRS)
+foreach(local_dep_include
+    "${CMAKE_SOURCE_DIR}/../../tools/CoreToolkit/include"
+    "${CMAKE_SOURCE_DIR}/../StructureIdentification/include"
+    "${CMAKE_SOURCE_DIR}/../CommonNeighborAnalysis/include"
+    "${CMAKE_SOURCE_DIR}/../PolyhedralTemplateMatching/include"
+)
+    if(EXISTS "${local_dep_include}")
+        list(APPEND LRDXA_LOCAL_DEP_INCLUDE_DIRS "${local_dep_include}")
+    endif()
+endforeach()
+
 function(append_imported_library out_var target_name)
     if(NOT TARGET "${target_name}")
         return()
@@ -82,6 +94,7 @@ add_library(${PROJECT_NAME}_lib STATIC ${LIB_SOURCES})
 set_target_properties(${PROJECT_NAME}_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(${PROJECT_NAME}_lib BEFORE PUBLIC
+    ${LRDXA_LOCAL_DEP_INCLUDE_DIRS}
     ${OPENDXA_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/include
 )
