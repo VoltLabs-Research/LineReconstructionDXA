@@ -1,9 +1,7 @@
 #include <volt/lrdxa_engine.h>
 
-#include <volt/analysis/crystal_path_finder.h>
-#include <volt/analysis/cluster_connector.h>
+#include <volt/helpers/crystal_path_finder.h>
 #include <volt/analysis/structure_analysis.h>
-#include <volt/analysis/analysis_context.h>
 #include <volt/structures/crystal_structure_types.h>
 #include <deque>
 #include <unordered_map>
@@ -65,9 +63,9 @@ bool crystalUsesDirectTessellation(int latticeStructureType) {
     return computedSubTypeForCrystal(latticeStructureType) == LATTICE_OTHER;
 }
 
-}  // namespace
+}
 
-LineReconstructionDXAAlgorithm::LineReconstructionDXAAlgorithm(StructureAnalysis& structureAnalysis, AnalysisContext& context)
+LineReconstructionDXAAlgorithm::LineReconstructionDXAAlgorithm(StructureAnalysis& structureAnalysis, StructureContext& context)
     : _structureAnalysis(structureAnalysis)
     , _context(context)
     , _atomClusters(context.atomCount(), nullptr)
@@ -105,12 +103,6 @@ void LineReconstructionDXAAlgorithm::run(
             markStage(stage);
         }
     };
-
-    buildClusters();
-    emitStage("build_clusters");
-
-    dissolveSmallClusters(options.minClusterSize);
-    emitStage("dissolve_small_clusters");
 
     markPerfectCrystallineRegions();
     emitStage("mark_perfect_crystalline_regions");
@@ -189,28 +181,6 @@ void LineReconstructionDXAAlgorithm::run(
         _dislocationLines.size(),
         _unassignedEdgesOutput.size()
     );
-}
-
-void LineReconstructionDXAAlgorithm::buildClusters() {
-    ClusterConnector clusterConnector(_structureAnalysis, _context);
-    clusterConnector.buildClusters();
-    clusterConnector.connectClusters();
-    clusterConnector.formSuperClusters();
-}
-
-void LineReconstructionDXAAlgorithm::dissolveSmallClusters(int minClusterSize) {
-    for(Cluster* cluster : _structureAnalysis.clusterGraph().clusters()) {
-        // Total number of atoms is stored in the parent cluster (super-cluster).
-        auto clusterSize = cluster->atomCount;
-        if(cluster->parentTransition != nullptr) {
-            clusterSize = cluster->parentTransition->cluster2->atomCount;
-        }
-        if(cluster->structure == LATTICE_OTHER || clusterSize >= minClusterSize) {
-            continue;
-        }
-        // Dissolve the cluster by resetting its structure type.
-        cluster->structure = LATTICE_OTHER;
-    }
 }
 
 void LineReconstructionDXAAlgorithm::markPerfectCrystallineRegions() {
@@ -373,13 +343,6 @@ void LineReconstructionDXAAlgorithm::assignAtomsToClusters() {
 }
 
 void LineReconstructionDXAAlgorithm::eliminateSpuriousDislocationLoops() {
-    // OVITO 3.15: After assignIdealVectorsToEdges(), test each filled cell for
-    // crystal lattice mapping compatibility. Edges that only appear in
-    // incompatible cells (never in any compatible cell) are invalidated.
-    // This eliminates spurious dislocation loops caused by incorrect
-    // ideal vector assignments.
-
-    // Phase 1: Count per-edge how many compatible vs incompatible cells it belongs to.
     std::unordered_map<TessellationEdge*, int> compatibleCount;
     std::unordered_map<TessellationEdge*, int> incompatibleCount;
 
@@ -389,7 +352,6 @@ void LineReconstructionDXAAlgorithm::eliminateSpuriousDislocationLoops() {
         }
         auto cellEdges = getOrientedEdges(cell);
 
-        // Check if all 6 edges have vectors assigned
         bool allAssigned = true;
         for(int i = 0; i < 6; ++i) {
             if(!cellEdges[i] || !cellEdges[i].hasEdgeVector()) {
@@ -414,11 +376,10 @@ void LineReconstructionDXAAlgorithm::eliminateSpuriousDislocationLoops() {
         }
     }
 
-    // Phase 2: Invalidate edges that appear ONLY in incompatible cells.
     int invalidated = 0;
     for(auto& [edge, incompat] : incompatibleCount) {
         if(compatibleCount.count(edge) > 0) {
-            continue; // Edge also appears in at least one compatible cell — keep it.
+            continue;
         }
         if(!edge->hasEdgeVector) {
             continue;
@@ -518,12 +479,12 @@ bool LineReconstructionDXAAlgorithm::complementEdgeVectors(bool forward) {
             }
             int nextFacet = tab_next_around_edge[localVertex1][localVertex2];
             if(nextFacet < 0 || nextFacet > 3) {
-                break; // Invalid facet index (diagonal = 5 means same vertex)
+                break;
             }
             int facet;
             std::tie(cell, facet) = _tessellation.mirrorFacet(cell, nextFacet);
             if(!isFiniteCell(_tessellation, cell)) {
-                break; // Reached infinite cell, cannot continue traversal
+                break;
             }
             if(_tessellation.isGhostCell(cell)) {
                 std::array<AtomIndex, 3> vertices{};
@@ -598,20 +559,18 @@ bool LineReconstructionDXAAlgorithm::complementEdgeVectors(bool forward) {
                     std::rotate(facetEdges.begin(), facetEdges.begin() + 1, facetEdges.end());
                     rotations++;
                 }
-                if(rotations >= 3) return; // No matching edge found
+                if(rotations >= 3) return;
                 if(facetEdges[1].hasEdgeVector() && facetEdges[2].hasEdgeVector()) {
                     if(!facetEdges[0].transition() || !facetEdges[2].transition()) return;
                     Vector3 inferred = -facetEdges[0].transition()->reverseTransform(facetEdges[1].vector().localVec())
                         - facetEdges[2].transition()->transform(facetEdges[2].vector().localVec());
                     candidates.add(ClusterVector(inferred, facetEdges[0].transition()->cluster1));
                 } else if(forward && facetEdges[1].hasEdgeVector()) {
-                    // Secondary propagation: only in forward pass
                     secondaryCandidate = facetEdges[1];
                     if(facetEdges[2].undirectedEdge() && facetEdges[2].undirectedEdge()->transition) {
                         queue.push_back(facetEdges[2].undirectedEdge());
                     }
                 } else if(forward && facetEdges[2].hasEdgeVector()) {
-                    // Secondary propagation: only in forward pass
                     secondaryCandidate = -facetEdges[2];
                     if(facetEdges[1].undirectedEdge() && facetEdges[1].undirectedEdge()->transition) {
                         queue.push_back(facetEdges[1].undirectedEdge());
@@ -622,7 +581,6 @@ bool LineReconstructionDXAAlgorithm::complementEdgeVectors(bool forward) {
             if(!candidates.empty()) {
                 edge->vector = ClusterVector(-edge->transition->reverseTransform(candidates.mostFrequent().localVec()), edge->transition->cluster1);
             } else if(forward && secondaryCandidate) {
-                // Secondary propagation: only in forward pass
                 AtomIndex oppositeAtom = secondaryCandidate.atom1() == edge->atom1 ? edge->atom2 : edge->atom1;
                 if(isVertexFullyIsolated(oppositeAtom)) {
                     if(secondaryCandidate.atom1() == edge->atom1) {
@@ -645,18 +603,6 @@ bool LineReconstructionDXAAlgorithm::complementEdgeVectors(bool forward) {
     return numAssignedEdges != 0;
 }
 
-// ---------------------------------------------------------------------------
-// FCC Glide Consistency Filter — reverse-engineered from OVITO 3.15
-//
-// For a Delaunay cell where ALL Shockley-partial Burgers vectors (|b|^2 ≈ 1/6)
-// agree on the same {111} slip plane, determine which of the 6 cell edges lie
-// IN that plane (edge · planeNormal ≈ 0). These "conservative glide edge" flags
-// are used downstream to adjust facet crossing-point geometry so that
-// dislocation line segments are consistent with FCC glide constraints.
-//
-// The Burgers vectors and edge vectors are in LATTICE (cluster-local)
-// coordinates.
-// ---------------------------------------------------------------------------
 std::array<bool, 6> LineReconstructionDXAAlgorithm::determineConservativeGlideEdgesFCC(
     const std::array<OrientedEdge, 6>& cellEdges,
     const ClusterVector facetBurgers[4],
@@ -664,20 +610,16 @@ std::array<bool, 6> LineReconstructionDXAAlgorithm::determineConservativeGlideEd
 {
     std::array<bool, 6> result = {false, false, false, false, false, false};
 
-    // FCC {111} slip plane normals in lattice coordinates.
     static const Vector3 FCC_SLIP_PLANE_NORMALS[4] = {
-        Vector3(1.0, 1.0, 1.0),    // (111)
-        Vector3(1.0, 1.0, -1.0),   // (11-1)
-        Vector3(1.0, -1.0, 1.0),   // (1-11)
-        Vector3(-1.0, 1.0, 1.0),   // (-111)
+        Vector3(1.0, 1.0, 1.0),
+        Vector3(1.0, 1.0, -1.0),
+        Vector3(1.0, -1.0, 1.0),
+        Vector3(-1.0, 1.0, 1.0),
     };
 
-    // Shockley partial Burgers vector |b|^2 = 1/6 in lattice units.
     constexpr double EXPECTED_SQ_MAG = 1.0 / 6.0;
     constexpr double TOLERANCE = 0.001;
 
-    // Only applies to FCC structure.
-    // Check via the first active facet's cluster.
     bool isFCC = false;
     for(int f = 0; f < 4; ++f) {
         if(activeFacet[f] && facetBurgers[f].cluster()) {
@@ -687,7 +629,7 @@ std::array<bool, 6> LineReconstructionDXAAlgorithm::determineConservativeGlideEd
     }
     if(!isFCC) return result;
 
-    int consensusPlane = 0;  // 0 = undetermined, 1-4 = slip plane index
+    int consensusPlane = 0;
 
     for(int f = 0; f < 4; ++f) {
         if(!activeFacet[f]) continue;
@@ -695,33 +637,29 @@ std::array<bool, 6> LineReconstructionDXAAlgorithm::determineConservativeGlideEd
         const Vector3& b = facetBurgers[f].localVec();
         double sqMag = b.x() * b.x() + b.y() * b.y() + b.z() * b.z();
 
-        // Check if this Burgers vector is a Shockley partial.
         if(std::abs(sqMag - EXPECTED_SQ_MAG) > TOLERANCE) continue;
 
-        // Determine which {111} plane: b · n = 0
         int plane = 0;
         if(std::abs(b.x() + b.y() + b.z()) < TOLERANCE)
-            plane = 1;  // (111)
+            plane = 1;
         else if(std::abs(b.x() + b.y() - b.z()) < TOLERANCE)
-            plane = 2;  // (11-1)
+            plane = 2;
         else if(std::abs(b.x() - b.y() + b.z()) < TOLERANCE)
-            plane = 3;  // (1-11)
+            plane = 3;
         else if(std::abs(-b.x() + b.y() + b.z()) < TOLERANCE)
-            plane = 4;  // (-111)
+            plane = 4;
 
         if(plane == 0) continue;
 
-        // Consensus check: all Shockley partials must agree on the same plane.
         if(consensusPlane == 0) {
             consensusPlane = plane;
         } else if(plane != consensusPlane) {
-            return result;  // Conflicting planes → return all false.
+            return result;
         }
     }
 
-    if(consensusPlane == 0) return result;  // No Shockley partials found.
+    if(consensusPlane == 0) return result;
 
-    // Mark edges that lie IN the consensus slip plane (edge · normal ≈ 0).
     const Vector3& normal = FCC_SLIP_PLANE_NORMALS[consensusPlane - 1];
     for(int e = 0; e < 6; ++e) {
         if(!cellEdges[e] || !cellEdges[e].hasEdgeVector()) continue;
@@ -772,7 +710,6 @@ void LineReconstructionDXAAlgorithm::appendDislocationSegmentSnapshot() {
                 continue;
             }
 
-            // Perform disclination test on the face.
             if(facetEdges[0].hasEdgeVector() && facetEdges[1].hasEdgeVector() && facetEdges[2].hasEdgeVector()) {
                 ClusterTransition* t0 = facetEdges[0].transition();
                 ClusterTransition* t1 = facetEdges[1].transition();
@@ -780,7 +717,7 @@ void LineReconstructionDXAAlgorithm::appendDislocationSegmentSnapshot() {
                 if(!t0->isSelfTransition() || !t1->isSelfTransition() || !t2->isSelfTransition()) {
                     Matrix3 frankRotation = t2->tm * t1->tm * t0->tm;
                     if(!frankRotation.equals(Matrix3::Identity(), CA_TRANSITION_MATRIX_EPSILON)) {
-                        continue; // Disclination test failed.
+                        continue;
                     }
                 }
             }
@@ -806,9 +743,6 @@ void LineReconstructionDXAAlgorithm::appendDislocationSegmentSnapshot() {
             Point3 cellCenter = Point3::Origin() + cellSum / 4.0;
             Cluster* cluster = clusterOfAtom(facetEdges[0].atom1());
             ClusterVector normalizedBurgers = normalizeBurgersVector(burgersVector, cluster);
-            // OVITO mutates the cluster pointer after normalization:
-            // the normalized Burgers vector's cluster reflects the target
-            // crystal structure (e.g., FCC cluster for HCP twin boundary atoms).
             Cluster* effectiveCluster = normalizedBurgers.cluster();
             int structureType = effectiveCluster ? effectiveCluster->structure : LATTICE_OTHER;
             _dislocationSegments.push_back({
@@ -863,10 +797,6 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
         nodeIsCenter.push_back(true);
         return nodeId;
     };
-
-    // Phase 1: Build temporary segments from facet extraction.
-    // This mirrors extractDislocationSegments() but creates node-based segments
-    // instead of position-pair segments.
 
     for(DelaunayTessellation::CellHandle cell : _tessellation.cells()) {
         if(!isFilledCell(cell)) {
@@ -982,7 +912,6 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
                 continue;
             }
 
-            // Disclination test
             ClusterTransition* t0 = facetEdges[0].transition();
             ClusterTransition* t1 = facetEdges[1].transition();
             ClusterTransition* t2 = facetEdges[2].transition();
@@ -996,7 +925,6 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
                 }
             }
 
-            // Compute canonical facet vertex triple
             std::array<AtomIndex, 3> key = {
                 static_cast<AtomIndex>(cellVertices[DelaunayTessellation::cellFacetVertexIndex(facet, 0)]),
                 static_cast<AtomIndex>(cellVertices[DelaunayTessellation::cellFacetVertexIndex(facet, 1)]),
@@ -1004,7 +932,6 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
             };
             std::sort(key.begin(), key.end());
 
-            // Normalize Burgers vector and get effective cluster
             Cluster* rawCluster = clusterOfAtom(facetEdges[0].atom1());
             ClusterVector normalizedBurgers = normalizeBurgersVector(burgersVector, rawCluster);
             Cluster* effectiveCluster = normalizedBurgers.cluster();
@@ -1017,15 +944,11 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
             facetKeys[facet] = key;
         }
 
-        // Count active facets
         int activeCount = 0;
         for(int facet = 0; facet < 4; ++facet) {
             if(activeFacet[facet]) activeCount++;
         }
 
-        // --- FCC Glide Consistency Filter ---
-        // Determine which cell edges lie in the consensus FCC slip plane.
-        // Only called when >= 2 facets are active (matching OVITO binary behavior).
         std::array<bool, 6> glideEdge = {false, false, false, false, false, false};
         int glideEdgeCount = 0;
         if(activeCount >= 2) {
@@ -1036,27 +959,16 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
 
         }
 
-        // Compute glide-aware facet crossing points and create face-crossing nodes.
-        // The standard crossing point is the centroid of the 3 facet vertices: (v0+v1+v2)/3.
-        // When glide edge flags are set, the crossing point is adjusted:
-        //   - edgeC is glide, A/B not: centroid of all 4 tet vertices (v0+v1+v2+v3)/4
-        //   - Exactly 1 of (A,B) is glide, C not: vertex at the non-glide edge endpoint
         int facetNodeIds[4] = {-1, -1, -1, -1};
         for(int facet = 0; facet < 4; ++facet) {
             if(!activeFacet[facet]) continue;
 
-            // Get the 3 facet vertex positions
             Point3 fv0 = tetPoints[DelaunayTessellation::cellFacetVertexIndex(facet, 0)];
             Point3 fv1 = tetPoints[DelaunayTessellation::cellFacetVertexIndex(facet, 1)];
             Point3 fv2 = tetPoints[DelaunayTessellation::cellFacetVertexIndex(facet, 2)];
 
-            // Default: standard centroid of 3 facet vertices
             Point3 faceCenter = Point3::Origin() + ((fv0 - Point3::Origin()) + (fv1 - Point3::Origin()) + (fv2 - Point3::Origin())) / 3.0;
 
-            // OVITO's binary uses the facet centroid by default. If exactly one
-            // glide edge is active on the facet, it duplicates the vertex opposite
-            // that edge and averages four samples, giving that opposite vertex 0.5
-            // weight and the remaining two 0.25 each.
             const int facetLocalVerts[3] = {
                 DelaunayTessellation::cellFacetVertexIndex(facet, 0),
                 DelaunayTessellation::cellFacetVertexIndex(facet, 1),
@@ -1097,10 +1009,6 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
             facetNodeIds[facet] = getOrCreateFacetNode(facetKeys[facet], faceCenter).first;
         }
 
-        // Compute cell center:
-        // If only 1 active facet, use the average of all 4 tetrahedron vertices.
-        // If multiple active facets, use average of active face-crossing node positions
-        // (matching OVITO's computeInteriorNodePosition).
         Point3 cellCenter;
         if(activeCount <= 1) {
             Vector3 sum = Vector3::Zero();
@@ -1139,7 +1047,6 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
             continue;
         }
 
-        // Create temporary segments: center-node -> face-node
         for(int facet = 0; facet < 4; ++facet) {
             if(!activeFacet[facet]) continue;
             tmpSegments.push_back({
@@ -1267,7 +1174,6 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
         });
     }
 
-    // Count statistics
     int closedCount = 0;
     int openCount = 0;
     double totalLength = 0.0;
@@ -1291,18 +1197,12 @@ void LineReconstructionDXAAlgorithm::stitchDislocationLines() {
 }
 
 void LineReconstructionDXAAlgorithm::finishDislocationLines(int smoothingLevel, double linePointInterval) {
-    // --- Phase 1: Negate all Burgers vectors ---
-    // OVITO 3.15 applies a blanket sign-flip to all Burgers vectors after tracing.
-    // The tracing convention accumulates b with opposite sign to the final output convention.
     for(auto& line : _dislocationLines) {
         line.burgersVector = ClusterVector(-line.burgersVector.localVec(), line.burgersVector.cluster());
     }
 
-    // OVITO pipeline order (from RE at 0xfdd780): coarsen first, then smooth.
-    // Coarsening reduces point count via centroid-averaging groups, then Taubin
-    // smoothing operates on the reduced set for maximum effect.
     if(linePointInterval > 0.0) {
-        constexpr int CORE_SIZE_DEFAULT = 6;  // OVITO constant when no per-point core data
+        constexpr int CORE_SIZE_DEFAULT = 6;
 
         for(auto& line : _dislocationLines) {
             const int N = static_cast<int>(line.points.size());
@@ -1368,13 +1268,6 @@ void LineReconstructionDXAAlgorithm::finishDislocationLines(int smoothingLevel, 
         }
     }
 
-    // --- Phase 3: Taubin lambda-mu line smoothing ---
-    // From RE of smoothDislocationLine at 0xfd7010:
-    //   lambda = 0.5 (shrink pass)
-    //   mu     = -10/19 approx -0.526315789886 (inflate pass, from kPB=0.1)
-    //   Each iteration = TWO sub-passes: first lambda, then mu (Jacobi-style).
-    //   Open lines: endpoints pinned. Closed lines: wraparound neighbors.
-    // Applied AFTER coarsening for maximum effect on reduced point set.
     if(smoothingLevel > 0) {
         constexpr double lambda = 0.5;
         constexpr double mu = -10.0 / 19.0;
@@ -1417,7 +1310,6 @@ void LineReconstructionDXAAlgorithm::finishDislocationLines(int smoothingLevel, 
         }
     }
 
-    // --- Phase 4: Classify FCC dislocation types ---
     classifyDislocationTypes();
 
     double finalLength = 0.0;
@@ -1445,12 +1337,6 @@ void LineReconstructionDXAAlgorithm::finishDislocationLines(int smoothingLevel, 
 }
 
 void LineReconstructionDXAAlgorithm::classifyDislocationTypes() {
-    // FCC Burgers vector classification based on |b|^2 in lattice coordinates:
-    //   1/2<110>: Perfect dislocation    |b|^2 = 0.5
-    //   1/6<112>: Shockley partial       |b|^2 = 1/6 ≈ 0.1667
-    //   1/3<111>: Frank partial           |b|^2 = 1/3 ≈ 0.3333
-    //   1/6<110>: Stair-rod              |b|^2 = 1/18 ≈ 0.0556
-    //   1/3<100>: Hirth                  |b|^2 = 1/9 ≈ 0.1111
     constexpr double TOL = 0.01;
 
     int perfect = 0, shockley = 0, frank = 0, stairrod = 0, hirth = 0, other = 0;
@@ -1464,22 +1350,22 @@ void LineReconstructionDXAAlgorithm::classifyDislocationTypes() {
         double sqMag = b.x() * b.x() + b.y() * b.y() + b.z() * b.z();
 
         if(std::abs(sqMag - 0.5) < TOL) {
-            line.dislocationTypeId = 1;  // Perfect 1/2<110>
+            line.dislocationTypeId = 1;
             perfect++;
         } else if(std::abs(sqMag - 1.0 / 6.0) < TOL) {
-            line.dislocationTypeId = 2;  // Shockley 1/6<112>
+            line.dislocationTypeId = 2;
             shockley++;
         } else if(std::abs(sqMag - 1.0 / 3.0) < TOL) {
-            line.dislocationTypeId = 3;  // Frank 1/3<111>
+            line.dislocationTypeId = 3;
             frank++;
         } else if(std::abs(sqMag - 1.0 / 18.0) < TOL) {
-            line.dislocationTypeId = 4;  // Stair-rod 1/6<110>
+            line.dislocationTypeId = 4;
             stairrod++;
         } else if(std::abs(sqMag - 1.0 / 9.0) < TOL) {
-            line.dislocationTypeId = 5;  // Hirth 1/3<100>
+            line.dislocationTypeId = 5;
             hirth++;
         } else {
-            line.dislocationTypeId = 0;  // Unknown
+            line.dislocationTypeId = 0;
             other++;
         }
     }
@@ -1695,4 +1581,4 @@ bool LineReconstructionDXAAlgorithm::isVertexFullyIsolated(AtomIndex atom) const
     return true;
 }
 
-}  // namespace Volt::DXA
+}

@@ -1,6 +1,7 @@
 #include <volt/cli/common.h>
 #include <volt/lrdxa_service.h>
 #include <volt/structures/crystal_structure_types.h>
+#include <oneapi/tbb/global_control.h>
 #include <tbb/info.h>
 #include <algorithm>
 #include <fstream>
@@ -23,33 +24,22 @@ LatticeStructureType parseCrystalStructure(const std::string& str) {
     return LATTICE_FCC;
 }
 
-StructureAnalysis::Mode parseIdentificationMode(const std::string& str) {
-    if(str == "CNA") return StructureAnalysis::Mode::CNA;
-    if(str == "PTM") return StructureAnalysis::Mode::PTM;
-    if(str == "DIAMOND") return StructureAnalysis::Mode::DIAMOND;
-    spdlog::warn("Unknown identification mode '{}' , defaulting to CNA.", str);
-    return StructureAnalysis::Mode::CNA;
-}
-
 void showUsage(const std::string& name) {
     printUsageHeader(name, "Volt - Line Reconstruction DXA");
     std::cerr
+        << "  --clusters-table <path>                 Path to *_clusters.table exported upstream.\n"
+        << "  --clusters-transitions <path>           Path to *_cluster_transitions.table exported upstream.\n"
         << "  --crystalStructure <type>              Reference crystal structure. (BCC|FCC|HCP|CUBIC_DIAMOND|HEX_DIAMOND|SC) [default: FCC]\n"
-        << "  --identificationMode <mode>            Structure identification mode. (CNA|PTM|DIAMOND) [default: CNA]\n"
-        << "  --rmsd <float>                         RMSD threshold for PTM. [default: 0.12]\n"
-        << "  --minClusterSize <int>                 Minimum crystalline cluster size kept before dissolution. [default: 50]\n"
         << "  --crystalPathSteps <int>               Maximum crystal-path steps used for edge vectors. [default: 4]\n"
         << "  --tessellationGhostLayerScale <float>  Ghost-layer scale relative to neighbor distance. [default: 3.5]\n"
         << "  --alphaScale <float>                   Alpha threshold scale relative to neighbor distance. [default: 3.5]\n"
         << "  --smoothingIterations <int>            Taubin smoothing iterations for reconstructed lines. [default: 0]\n"
         << "  --linePointInterval <float>            Line coarsening interval. [default: 1.2]\n"
-        << "  --onlyPerfectDislocations <bool>       Restrict upstream structure analysis. [default: false]\n"
-        << "  --structureIdentificationOnly <bool>   Export only structure identification outputs. [default: false]\n"
         << "  --threads <int>                        Max worker threads (TBB/OMP). [default: auto capped to physical cores]\n";
     printHelpOption();
 }
 
-}  // namespace
+}
 
 int main(int argc, char* argv[]) {
     if(argc < 2) {
@@ -109,8 +99,13 @@ int main(int argc, char* argv[]) {
         opts["--threads"] = std::to_string(std::max(1, std::min(maxAvailableThreads, physicalCores > 0 ? physicalCores : maxAvailableThreads)));
     }
 
-    auto parallel = initParallelism(opts, false);
-    initLogging("line-reconstruction-dxa", parallel.threads);
+    const int requestedThreads = getInt(opts, "--threads");
+    oneapi::tbb::global_control parallelControl(
+        oneapi::tbb::global_control::max_allowed_parallelism,
+        static_cast<std::size_t>(std::max(1, requestedThreads))
+    );
+    initLogging("line-reconstruction-dxa");
+    spdlog::info("Using {} threads (OneTBB)", requestedThreads);
 
     LammpsParser::Frame frame;
     if(!parseFrame(filename, frame)) return 1;
@@ -119,17 +114,14 @@ int main(int argc, char* argv[]) {
     spdlog::info("Output base: {}", outputBase);
 
     LineReconstructionDXAService analyzer;
+    analyzer.setClustersTablePath(getString(opts, "--clusters-table"));
+    analyzer.setClusterTransitionsPath(getString(opts, "--clusters-transitions"));
     analyzer.setInputCrystalStructure(parseCrystalStructure(getString(opts, "--crystalStructure", "FCC")));
-    analyzer.setIdentificationMode(parseIdentificationMode(getString(opts, "--identificationMode", "CNA")));
-    analyzer.setRmsd(getDouble(opts, "--rmsd", 0.12f));
-    analyzer.setMinClusterSize(getInt(opts, "--minClusterSize", 50));
     analyzer.setCrystalPathSteps(getInt(opts, "--crystalPathSteps", 4));
     analyzer.setTessellationGhostLayerScale(getDouble(opts, "--tessellationGhostLayerScale", 3.5));
     analyzer.setAlphaScale(getDouble(opts, "--alphaScale", 3.5));
     analyzer.setSmoothingIterations(getInt(opts, "--smoothingIterations", 0));
     analyzer.setLinePointInterval(getDouble(opts, "--linePointInterval", 1.2));
-    analyzer.setOnlyPerfectDislocations(getBool(opts, "--onlyPerfectDislocations"));
-    analyzer.setStructureIdentificationOnly(getBool(opts, "--structureIdentificationOnly"));
 
     spdlog::info("Starting line reconstruction DXA analysis...");
     json result = analyzer.compute(frame, outputBase);

@@ -11,7 +11,7 @@ namespace Volt {
 
 using json = nlohmann::json;
 
-class AnalysisContext;
+class StructureContext;
 class StructureAnalysis;
 class LineReconstructionJsonExporter;
 
@@ -24,12 +24,12 @@ public:
         const std::string& outputFile,
         const LineReconstructionDXAOptions& options,
         StructureAnalysis& reconstructionStructureAnalysis,
-        AnalysisContext& reconstructionContext,
+        StructureContext& reconstructionContext,
         LineReconstructionJsonExporter& jsonExporter,
         const std::function<void(std::string_view)>& markStage
     );
 };
 
-}  // namespace DXA
+}
 
-}  // namespace Volt
+}

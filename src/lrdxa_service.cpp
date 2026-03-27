@@ -1,9 +1,10 @@
 #include <volt/lrdxa_service.h>
 #include <volt/lrdxa_pipeline.h>
+#include <volt/core/reconstructed_structure.h>
 #include <volt/analysis/structure_analysis.h>
-#include <volt/analysis/analysis_context.h>
 #include <spdlog/spdlog.h>
 #include <chrono>
+#include <utility>
 #include <string_view>
 
 namespace Volt {
@@ -12,11 +13,6 @@ using namespace Volt::Particles;
 
 LineReconstructionDXA::LineReconstructionDXA()
     : _inputCrystalStructure(LATTICE_FCC)
-    , _identificationMode(StructureAnalysis::Mode::CNA)
-    , _rmsd(0.12f)
-    , _structureIdentificationOnly(false)
-    , _onlyPerfectDislocations(false)
-    , _minClusterSize(50)
     , _crystalPathSteps(4)
     , _tessellationGhostLayerScale(3.5)
     , _alphaScale(3.5)
@@ -28,24 +24,12 @@ void LineReconstructionDXA::setInputCrystalStructure(LatticeStructureType struct
     _inputCrystalStructure = structure;
 }
 
-void LineReconstructionDXA::setIdentificationMode(StructureAnalysis::Mode identificationMode) {
-    _identificationMode = identificationMode;
+void LineReconstructionDXA::setClustersTablePath(std::string path) {
+    _clustersTablePath = std::move(path);
 }
 
-void LineReconstructionDXA::setRmsd(float rmsd) {
-    _rmsd = rmsd;
-}
-
-void LineReconstructionDXA::setStructureIdentificationOnly(bool structureIdentificationOnly) {
-    _structureIdentificationOnly = structureIdentificationOnly;
-}
-
-void LineReconstructionDXA::setOnlyPerfectDislocations(bool flag) {
-    _onlyPerfectDislocations = flag;
-}
-
-void LineReconstructionDXA::setMinClusterSize(int minClusterSize) {
-    _minClusterSize = minClusterSize;
+void LineReconstructionDXA::setClusterTransitionsPath(std::string path) {
+    _clusterTransitionsPath = std::move(path);
 }
 
 void LineReconstructionDXA::setCrystalPathSteps(int crystalPathSteps) {
@@ -70,12 +54,6 @@ void LineReconstructionDXA::setLinePointInterval(double linePointInterval) {
 
 LineReconstructionDXAOptions LineReconstructionDXA::buildOptions() const {
     return LineReconstructionDXAOptions{
-        .inputCrystalStructure = _inputCrystalStructure,
-        .identificationMode = _identificationMode,
-        .rmsd = _rmsd,
-        .structureIdentificationOnly = _structureIdentificationOnly,
-        .onlyPerfectDislocations = _onlyPerfectDislocations,
-        .minClusterSize = _minClusterSize,
         .crystalPathSteps = _crystalPathSteps,
         .tessellationGhostLayerScale = _tessellationGhostLayerScale,
         .alphaScale = _alphaScale,
@@ -98,71 +76,35 @@ json LineReconstructionDXA::compute(const LammpsParser::Frame& frame, const std:
         stageStart = now;
     };
 
-    if(options.identificationMode == StructureAnalysis::Mode::CNA && options.inputCrystalStructure == LATTICE_SC) {
-        return AnalysisResult::failure("CNA does not support SC. Use PTM for simple cubic crystals.");
+    FrameAdapter::PreparedAnalysisInput prepared;
+    std::string frameError;
+    if(!FrameAdapter::prepareAnalysisInput(frame, prepared, &frameError)) {
+        return AnalysisResult::failure(frameError);
+    }
+    if(_clustersTablePath.empty() || _clusterTransitionsPath.empty()) {
+        return AnalysisResult::failure(
+            "LineReconstructionDXA requires --clusters-table and --clusters-transitions"
+        );
     }
 
-    if(frame.natoms <= 0) {
-        return AnalysisResult::failure("Invalid number of atoms: " + std::to_string(frame.natoms));
-    }
-    if(frame.positions.empty()) {
-        return AnalysisResult::failure("No position data available");
-    }
-    if(!FrameAdapter::validateSimulationCell(frame.simulationCell)) {
-        return AnalysisResult::failure("Invalid simulation cell");
-    }
-
-    auto positions = FrameAdapter::createPositionPropertyShared(frame);
-    if(!positions) {
-        return AnalysisResult::failure("Failed to create position property");
-    }
+    auto positions = std::move(prepared.positions);
     markStage("create_position_property");
 
-    std::vector<Matrix3> preferredOrientations{Matrix3::Identity()};
-    auto structureTypes = std::make_unique<ParticleProperty>(frame.natoms, DataType::Int, 1, 0, true);
-    AnalysisContext context(
-        positions.get(),
-        frame.simulationCell,
-        options.inputCrystalStructure,
-        nullptr,
-        structureTypes.get(),
-        std::move(preferredOrientations)
-    );
+    ReconstructedStructureContext context(positions.get(), frame.simulationCell);
+    context.inputCrystalType = _inputCrystalStructure;
 
-    StructureAnalysis structureAnalysis(
+    StructureAnalysis structureAnalysis(context);
+    std::string reconstructionError;
+    if(!ReconstructedStructureLoader::load(
+        frame,
+        {_clustersTablePath, _clusterTransitionsPath},
+        structureAnalysis,
         context,
-        !options.onlyPerfectDislocations,
-        options.identificationMode,
-        options.rmsd
-    );
-    markStage("structure_analysis_setup");
-
-    if(options.identificationMode == StructureAnalysis::Mode::PTM) {
-        structureAnalysis.determineLocalStructuresWithPTM();
-        structureAnalysis.computeMaximumNeighborDistanceFromPTM();
-    } else {
-        structureAnalysis.identifyStructuresCNA();
+        &reconstructionError
+    )) {
+        return AnalysisResult::failure(reconstructionError);
     }
-    markStage("identify_structures");
-
-    if(!outputFile.empty() && options.identificationMode == StructureAnalysis::Mode::PTM) {
-        _jsonExporter.exportPTMData(structureAnalysis.context(), frame.ids, outputFile);
-        markStage("export_ptm");
-    }
-
-    if(!outputFile.empty()) {
-        _jsonExporter.exportForStructureIdentification(frame, structureAnalysis, outputFile);
-        markStage("stream_atoms_msgpack");
-    }
-
-    if(options.structureIdentificationOnly && !outputFile.empty()) {
-        result["is_failed"] = false;
-        result["stage_metrics"] = std::move(stageMetrics);
-        result["total_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::high_resolution_clock::now() - startTime
-        ).count();
-        return result;
-    }
+    markStage("load_reconstructed_structure");
 
     result = DXA::LineReconstructionDXAPipeline::run(
         frame,
@@ -181,4 +123,4 @@ json LineReconstructionDXA::compute(const LammpsParser::Frame& frame, const std:
     return result;
 }
 
-}  // namespace Volt
+}

@@ -17,11 +17,8 @@ public:
     LineReconstructionDXA();
 
     void setInputCrystalStructure(LatticeStructureType structure);
-    void setIdentificationMode(StructureAnalysis::Mode identificationMode);
-    void setRmsd(float rmsd);
-    void setStructureIdentificationOnly(bool structureIdentificationOnly);
-    void setOnlyPerfectDislocations(bool flag);
-    void setMinClusterSize(int minClusterSize);
+    void setClustersTablePath(std::string path);
+    void setClusterTransitionsPath(std::string path);
     void setCrystalPathSteps(int crystalPathSteps);
     void setTessellationGhostLayerScale(double tessellationGhostLayerScale);
     void setAlphaScale(double alphaScale);
@@ -35,21 +32,18 @@ private:
 
 private:
     LatticeStructureType _inputCrystalStructure;
-    StructureAnalysis::Mode _identificationMode;
-    float _rmsd;
-    bool _structureIdentificationOnly;
-    bool _onlyPerfectDislocations;
-    int _minClusterSize;
+    std::string _clustersTablePath;
+    std::string _clusterTransitionsPath;
     int _crystalPathSteps;
     double _tessellationGhostLayerScale;
     double _alphaScale;
     int _smoothingIterations;
     double _linePointInterval;
 
-    mutable LineReconstructionJsonExporter _jsonExporter;
+    LineReconstructionJsonExporter _jsonExporter;
 };
 
-}  // namespace Volt
+}
 
 namespace Volt {
 using LineReconstructionDXAService = LineReconstructionDXA;

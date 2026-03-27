@@ -6,8 +6,6 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <tbb/blocked_range.h>
-#include <tbb/parallel_for.h>
 #include <volt/utilities/json_utils.h>
 
 namespace Volt {
@@ -114,7 +112,7 @@ void clipDislocationLine(
     }
 }
 
-}  // namespace
+}
 
 template <typename MeshType>
 json LineReconstructionJsonExporter::getMeshData(const MeshType& mesh, const StructureAnalysis& structureAnalysis) {
@@ -451,40 +449,6 @@ void LineReconstructionJsonExporter::writeInterfaceMeshMsgpackToFile(
     JsonUtils::writeJsonMsgpackToFile(getMeshData(mesh, structureAnalysis), filePath, false);
 }
 
-void LineReconstructionJsonExporter::exportPTMData(
-    const AnalysisContext& context,
-    const std::vector<int>& ids,
-    const std::string& outputFilename
-) {
-    auto ptmProp = context.ptmOrientation;
-    auto corrProp = context.correspondencesCode;
-    if(!ptmProp || !corrProp) return;
-
-    const bool includeStructureType = context.structureTypes && context.structureTypes->size() >= ids.size();
-    json perAtom = json::array();
-    for(size_t i = 0; i < ids.size(); ++i) {
-        json atom;
-        atom["id"] = ids[i];
-        atom["correspondences"] = static_cast<uint64_t>(corrProp->getInt64(i));
-        if(includeStructureType) {
-            atom["structure_type"] = context.structureTypes->getInt(i);
-        }
-        json orient = json::array();
-        for(int c = 0; c < 4; ++c) orient.push_back(ptmProp->getDoubleComponent(i, c));
-        atom["orientation"] = orient;
-        perAtom.push_back(atom);
-    }
-
-    json data;
-    data["main_listing"] = {
-        {"total_atoms", static_cast<int>(ids.size())},
-        {"include_structure_type", includeStructureType}
-    };
-    data["sub_listings"] = {{"per_atom_properties", perAtom}};
-    data["export"]["AtomisticExporter"]["per_atom_properties"] = perAtom;
-    JsonUtils::writeJsonMsgpackToFile(data, outputFilename + "_ptm_data.msgpack", false);
-}
-
 json LineReconstructionJsonExporter::vectorToJson(const Vector3& vector) {
     return json{{"x", vector.x()}, {"y", vector.y()}, {"z", vector.z()}};
 }
@@ -549,118 +513,6 @@ json LineReconstructionJsonExporter::getExtendedSimulationCellInfo(const Simulat
     return wrapSimulationCellInfoJson(cell, std::move(cellJson));
 }
 
-void LineReconstructionJsonExporter::exportForStructureIdentification(
-    const LammpsParser::Frame& frame,
-    const StructureAnalysis& structureAnalysis,
-    const std::string& outputFilename
-) {
-    const size_t atomCount = frame.natoms;
-    constexpr int structureCount = static_cast<int>(StructureType::NUM_STRUCTURE_TYPES);
-
-    std::vector<std::string> names(structureCount);
-    for(int st = 0; st < structureCount; ++st) {
-        names[st] = structureAnalysis.getStructureTypeName(st);
-    }
-
-    std::vector<uint8_t> structureOfAtom(atomCount);
-    using StructureCounts = std::array<size_t, structureCount>;
-    std::vector<size_t> counts(structureCount, 0);
-    const size_t chunkSize = 16384;
-    const size_t chunkCount = (atomCount + chunkSize - 1) / chunkSize;
-    std::vector<StructureCounts> chunkCounts(chunkCount);
-
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, chunkCount, 16), [&](const tbb::blocked_range<size_t>& r) {
-        for(size_t chunkIdx = r.begin(); chunkIdx < r.end(); ++chunkIdx) {
-            auto& localCounts = chunkCounts[chunkIdx];
-            localCounts.fill(0);
-            const size_t begin = chunkIdx * chunkSize;
-            const size_t end = std::min(atomCount, begin + chunkSize);
-            for(size_t i = begin; i < end; ++i) {
-                const int raw = structureAnalysis.context().structureTypes->getInt(static_cast<int>(i));
-                const int st = (0 <= raw && raw < structureCount) ? raw : 0;
-                structureOfAtom[i] = static_cast<uint8_t>(st);
-                localCounts[static_cast<size_t>(st)]++;
-            }
-        }
-    });
-
-    for(size_t chunkIdx = 0; chunkIdx < chunkCount; ++chunkIdx) {
-        for(int st = 0; st < structureCount; ++st) {
-            counts[static_cast<size_t>(st)] += chunkCounts[chunkIdx][static_cast<size_t>(st)];
-        }
-    }
-
-    std::vector<StructureCounts> chunkOffsets(chunkCount);
-    StructureCounts runningOffsets{};
-    runningOffsets.fill(0);
-    for(size_t chunkIdx = 0; chunkIdx < chunkCount; ++chunkIdx) {
-        chunkOffsets[chunkIdx] = runningOffsets;
-        for(int st = 0; st < structureCount; ++st) {
-            runningOffsets[static_cast<size_t>(st)] += chunkCounts[chunkIdx][static_cast<size_t>(st)];
-        }
-    }
-
-    std::vector<std::vector<uint32_t>> structureAtomIndices(structureCount);
-    for(int st = 0; st < structureCount; ++st) {
-        structureAtomIndices[static_cast<size_t>(st)].resize(counts[static_cast<size_t>(st)]);
-    }
-
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, chunkCount, 16), [&](const tbb::blocked_range<size_t>& r) {
-        for(size_t chunkIdx = r.begin(); chunkIdx < r.end(); ++chunkIdx) {
-            auto writeOffsets = chunkOffsets[chunkIdx];
-            const size_t begin = chunkIdx * chunkSize;
-            const size_t end = std::min(atomCount, begin + chunkSize);
-            for(size_t i = begin; i < end; ++i) {
-                const size_t st = static_cast<size_t>(structureOfAtom[i]);
-                structureAtomIndices[st][writeOffsets[st]++] = static_cast<uint32_t>(i);
-            }
-        }
-    });
-
-    std::vector<int> structureOrder;
-    structureOrder.reserve(structureCount);
-    for(int st = 0; st < structureCount; ++st) {
-        if(counts[st] > 0) structureOrder.push_back(st);
-    }
-    std::sort(structureOrder.begin(), structureOrder.end(), [&](int a, int b) { return names[a] < names[b]; });
-
-    json atomsByStructure;
-    for(int st : structureOrder) {
-        json atomsArray = json::array();
-        for(uint32_t atomIndexRaw : structureAtomIndices[static_cast<size_t>(st)]) {
-            const size_t atomIndex = static_cast<size_t>(atomIndexRaw);
-            const Point3& pos = frame.positions[atomIndex];
-            atomsArray.push_back({
-                {"id", frame.ids[atomIndex]},
-                {"pos", {pos.x(), pos.y(), pos.z()}}
-            });
-        }
-        atomsByStructure[names[st]] = atomsArray;
-    }
-
-    json exportWrapper;
-    exportWrapper["main_listing"] = {
-        {"total_atoms", static_cast<int>(atomCount)},
-        {"structure_groups", static_cast<int>(structureOrder.size())}
-    };
-    exportWrapper["sub_listings"] = atomsByStructure;
-    exportWrapper["export"]["AtomisticExporter"] = atomsByStructure;
-    JsonUtils::writeJsonMsgpackToFile(exportWrapper, outputFilename + "_atoms.msgpack", false);
-
-    json structureStats;
-    structureStats["main_listing"] = {
-        {"structure_groups", static_cast<int>(structureAnalysis.getNamedStructureStatistics().size())},
-        {"total_atoms", static_cast<int>(atomCount)}
-    };
-    structureStats["sub_listings"]["structure_counts"] = structureAnalysis.getNamedStructureStatistics();
-    structureStats["export"]["AtomisticExporter"]["structure_counts"] = structureAnalysis.getNamedStructureStatistics();
-    JsonUtils::writeJsonMsgpackToFile(
-        structureStats,
-        outputFilename + "_structure_analysis_stats.msgpack",
-        false
-    );
-}
-
 double LineReconstructionJsonExporter::calculateAngle(const Vector3& a, const Vector3& b) {
     const double magnitudes = a.length() * b.length();
     if(magnitudes == 0.0) return 0.0;
@@ -669,4 +521,4 @@ double LineReconstructionJsonExporter::calculateAngle(const Vector3& a, const Ve
     return std::acos(cosAngle) * 180.0 / PI;
 }
 
-}  // namespace Volt
+}

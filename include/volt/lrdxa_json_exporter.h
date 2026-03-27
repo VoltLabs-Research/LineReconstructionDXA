@@ -3,9 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
-#include <volt/analysis/analysis_context.h>
 #include <volt/analysis/structure_analysis.h>
-#include <volt/core/lammps_parser.h>
 #include <volt/lrdxa_types.h>
 #include <volt/math/lin_alg.h>
 
@@ -16,18 +14,6 @@ using json = nlohmann::json;
 class LineReconstructionJsonExporter {
 public:
     explicit LineReconstructionJsonExporter() = default;
-
-    void exportForStructureIdentification(
-        const LammpsParser::Frame& frame,
-        const StructureAnalysis& structureAnalysis,
-        const std::string& outputFilename
-    );
-
-    void exportPTMData(
-        const AnalysisContext& context,
-        const std::vector<int>& ids,
-        const std::string& outputFilename
-    );
 
     json getExtendedSimulationCellInfo(const SimulationCell& cell);
 
@@ -74,4 +60,4 @@ private:
     double calculateAngle(const Vector3& a, const Vector3& b);
 };
 
-}  // namespace Volt
+}

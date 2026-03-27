@@ -1,9 +1,19 @@
+# Build directories
 build/
+build-local/
 cmake-build-*/
-.cache/
-.idea/
-.vscode/
-binary/
+
+# CMake / Ninja artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+install_manifest.txt
+Makefile
+.ninja_deps
+.ninja_log
+
+# Compiler outputs
 *.o
 *.obj
 *.a
@@ -11,4 +21,30 @@ binary/
 *.so
 *.dylib
 *.dll
-*.zip
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.manifest
+
+# Package / cache directories
+.cache/
+.conan/
+.conan2/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+# IDE / editor / OS files
+.idea/
+.vscode/
+.vs/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Generated analysis outputs
+output/
+*.log

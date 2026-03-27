@@ -2,7 +2,6 @@
 
 #include <volt/lrdxa_engine.h>
 #include <volt/analysis/structure_analysis.h>
-#include <volt/analysis/analysis_context.h>
 #include <volt/utilities/json_utils.h>
 #include <volt/lrdxa_json_exporter.h>
 
@@ -13,7 +12,7 @@ json LineReconstructionDXAPipeline::run(
     const std::string& outputFile,
     const LineReconstructionDXAOptions& options,
     StructureAnalysis& reconstructionStructureAnalysis,
-    AnalysisContext& reconstructionContext,
+    StructureContext& reconstructionContext,
     LineReconstructionJsonExporter& jsonExporter,
     const std::function<void(std::string_view)>& markStage
 ) {
@@ -59,4 +58,4 @@ json LineReconstructionDXAPipeline::run(
     return result;
 }
 
-}  // namespace Volt::DXA
+}

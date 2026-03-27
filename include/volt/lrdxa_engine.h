@@ -4,15 +4,15 @@
 #include <volt/core/particle_property.h>
 #include <volt/lrdxa_options.h>
 #include <volt/lrdxa_types.h>
-#include <volt/geometry/delaunay_tessellation.h>
-#include <volt/structures/cluster_vector.h>
+#include <volt/pipeline/delaunay_tessellation.h>
+#include <volt/helpers/cluster_vector.h>
 #include <volt/utilities/memory_pool.h>
 #include <functional>
 #include <string_view>
 
 namespace Volt {
 
-class AnalysisContext;
+class StructureContext;
 class StructureAnalysis;
 
 namespace DXA {
@@ -21,7 +21,7 @@ class LineReconstructionDXAAlgorithm {
 public:
     using AtomIndex = int;
 
-    explicit LineReconstructionDXAAlgorithm(StructureAnalysis& structureAnalysis, AnalysisContext& context);
+    explicit LineReconstructionDXAAlgorithm(StructureAnalysis& structureAnalysis, StructureContext& context);
 
     void run(const LineReconstructionDXAOptions& options, const std::function<void(std::string_view)>& markStage = {});
 
@@ -75,8 +75,6 @@ private:
         {0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}
     };
 
-    void buildClusters();
-    void dissolveSmallClusters(int minClusterSize);
     void markPerfectCrystallineRegions();
     void buildTessellation(double ghostLayerSize);
     void classifyTetrahedra(double alpha);
@@ -115,7 +113,7 @@ private:
 
 private:
     StructureAnalysis& _structureAnalysis;
-    AnalysisContext& _context;
+    StructureContext& _context;
     DelaunayTessellation _tessellation;
     std::vector<Cluster*> _atomClusters;
     std::vector<TessellationEdge*> _atomOutboundEdges;
@@ -133,9 +131,9 @@ private:
     int _delaunayVertexCount = 0;
 };
 
-}  // namespace DXA
+}
 
-}  // namespace Volt
+}
 
 namespace Volt {
 using LineReconstructionDXAEngine = DXA::LineReconstructionDXAAlgorithm;

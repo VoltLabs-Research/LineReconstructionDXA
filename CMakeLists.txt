@@ -28,8 +28,10 @@ option(LINE_RECONSTRUCTION_DXA_BOOTSTRAP_LOCAL_DEPS "Bootstrap local VoltLabs de
 set(VOLTLABS_ROOT "${CMAKE_SOURCE_DIR}/../voltlabs" CACHE PATH "Path to the local VoltLabs workspace")
 set(CORETOOLKIT_SOURCE_DIR "${VOLTLABS_ROOT}/CoreToolkit" CACHE PATH "Local CoreToolkit source directory")
 set(STRUCTURE_IDENTIFICATION_SOURCE_DIR "${VOLTLABS_ROOT}/StructureIdentification" CACHE PATH "Local StructureIdentification source directory")
+set(OPENDXA_SOURCE_DIR "${VOLTLABS_ROOT}/OpenDXA" CACHE PATH "Local OpenDXA source directory")
 set(CORETOOLKIT_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/_deps/install/coretoolkit" CACHE PATH "Install prefix for local CoreToolkit bootstrap")
 set(STRUCTURE_IDENTIFICATION_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/_deps/install/structure-identification" CACHE PATH "Install prefix for local StructureIdentification bootstrap")
+set(OPENDXA_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/_deps/install/opendxa" CACHE PATH "Install prefix for local OpenDXA bootstrap")
 
 if(LINE_RECONSTRUCTION_DXA_BOOTSTRAP_LOCAL_DEPS)
     list(PREPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -45,8 +47,6 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release MinSizeRel Re
 
 find_package(coretoolkit REQUIRED)
 find_package(structure-identification REQUIRED)
-find_package(common-neighbor-analysis REQUIRED)
-find_package(polyhedral-template-matching REQUIRED)
 find_package(opendxa REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -64,8 +64,6 @@ set(LRDXA_LOCAL_DEP_INCLUDE_DIRS)
 foreach(local_dep_include
     "${CMAKE_SOURCE_DIR}/../../tools/CoreToolkit/include"
     "${CMAKE_SOURCE_DIR}/../StructureIdentification/include"
-    "${CMAKE_SOURCE_DIR}/../CommonNeighborAnalysis/include"
-    "${CMAKE_SOURCE_DIR}/../PolyhedralTemplateMatching/include"
 )
     if(EXISTS "${local_dep_include}")
         list(APPEND LRDXA_LOCAL_DEP_INCLUDE_DIRS "${local_dep_include}")
@@ -103,8 +101,6 @@ target_link_libraries(${PROJECT_NAME}_lib PRIVATE
     opendxa::opendxa
     coretoolkit::coretoolkit
     structure-identification::structure-identification
-    common-neighbor-analysis::common-neighbor-analysis
-    polyhedral-template-matching::polyhedral-template-matching
     spdlog::spdlog
     nlohmann_json::nlohmann_json
 )
@@ -116,8 +112,6 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
 set(LRDXA_MANUAL_LINK_LIBS)
 append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::opendxa_opendxa_lib_RELEASE")
 append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::structure-identification_structure-identification_RELEASE")
-append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::common-neighbor-analysis_common-neighbor-analysis_lib_RELEASE")
-append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::polyhedral-template-matching_polyhedral-template-matching_lib_RELEASE")
 append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::coretoolkit_coretoolkit_RELEASE")
 append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::coretoolkit_ptm_RELEASE")
 append_imported_library(LRDXA_MANUAL_LINK_LIBS "CONAN_LIB::coretoolkit_mwm_csp_RELEASE")
@@ -127,8 +121,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${PROJECT_NAME}_lib
     opendxa::opendxa
     structure-identification::structure-identification
-    common-neighbor-analysis::common-neighbor-analysis
-    polyhedral-template-matching::polyhedral-template-matching
     coretoolkit::coretoolkit
     spdlog::spdlog
     nlohmann_json::nlohmann_json
