@@ -2,6 +2,12 @@
 
 `LineReconstructionDXA` reconstructs dislocation lines from an upstream cluster package and DXA-style geometric parameters.
 
+## One-Command Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/VoltLabs-Research/CoreToolkit/main/scripts/install-plugin.sh | bash -s -- LineReconstructionDXA
+```
+
 ## CLI
 
 Usage:
@@ -26,25 +32,3 @@ line-reconstruction-dxa <lammps_file> [output_base] [options]
 | `--linePointInterval <float>` | No | Line coarsening interval. | `1.2` |
 | `--threads <int>` | No | Maximum worker threads. | auto capped to physical cores |
 | `--help` | No | Print CLI help. | |
-
-## Build With CoreToolkit
-
-```bash
-cd /path/to/voltlabs-ecosystem/tools/CoreToolkit
-conan create . -nr
-
-cd /path/to/voltlabs-ecosystem/plugins/StructureIdentification
-conan create . -nr
-
-cd /path/to/voltlabs-ecosystem/plugins/CommonNeighborAnalysis
-conan create . -nr
-
-cd /path/to/voltlabs-ecosystem/plugins/PolyhedralTemplateMatching
-conan create . -nr
-
-cd /path/to/voltlabs-ecosystem/plugins/OpenDXA
-conan create . -nr
-
-cd /path/to/voltlabs-ecosystem/plugins/LineReconstructionDXA
-conan create . -nr
-```
